@@ -1,46 +1,85 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
 using lab27;
 
 namespace lab27.Pages.Sales
 {
     public class CreateModel : PageModel
     {
-        private readonly lab27.WarehouseContext _context;
+        private readonly WarehouseContext _context;
 
-        public CreateModel(lab27.WarehouseContext context)
+        public CreateModel(WarehouseContext context)
         {
             _context = context;
         }
 
-        public IActionResult OnGet()
+        public class SaleViewModel
         {
-        ViewData["CustomerID"] = new SelectList(_context.Customers, "CustomerID", "CustomerID");
-        ViewData["ProductID"] = new SelectList(_context.Products, "ProductID", "ProductID");
-        ViewData["SupplierID"] = new SelectList(_context.Suppliers, "SupplierID", "SupplierID");
-            return Page();
+            public int ProductID { get; set; }
+            public int SupplierID { get; set; }
+            public int CustomerID { get; set; }
+            public int QuantitySold { get; set; }
+            public decimal TotalAmount { get; set; }
+
+            public SelectList Products { get; set; } = default!;
+            public SelectList Suppliers { get; set; } = default!;
+            public SelectList Customers { get; set; } = default!;
         }
 
         [BindProperty]
-        public Sale Sale { get; set; } = default!;
+        public SaleViewModel SaleVM { get; set; } = new();
 
-        // For more information, see https://aka.ms/RazorPagesCRUD.
+        public void OnGet()
+        {
+            LoadSelectLists();
+        }
+
         public async Task<IActionResult> OnPostAsync()
         {
-            if (!ModelState.IsValid)
+            try
             {
+                if (!ModelState.IsValid)
+                {
+                    LoadSelectLists();
+                    return Page();
+                }
+
+                var product = await _context.Products.FirstOrDefaultAsync(p => p.ProductID == SaleVM.ProductID);
+                if (product == null)
+                {
+                    ModelState.AddModelError("", "Product not found.");
+                    LoadSelectLists();
+                    return Page();
+                }
+
+                var sale = new Sale
+                {
+                    ProductID = SaleVM.ProductID,
+                    SupplierID = SaleVM.SupplierID,
+                    CustomerID = SaleVM.CustomerID,
+                    QuantitySold = SaleVM.QuantitySold,
+                    TotalAmount = product.PurchasePrice * SaleVM.QuantitySold
+                };
+
+                _context.Sales.Add(sale);
+                await _context.SaveChangesAsync();
+                return RedirectToPage("./Index");
+            }
+            catch (Exception ex)
+            {
+                ModelState.AddModelError("", "Ошибка: " + ex.Message);
+                LoadSelectLists();
                 return Page();
             }
+        }
 
-            _context.Sales.Add(Sale);
-            await _context.SaveChangesAsync();
-
-            return RedirectToPage("./Index");
+        private void LoadSelectLists()
+        {
+            SaleVM.Products = new SelectList(_context.Products, "ProductID", "Name");
+            SaleVM.Suppliers = new SelectList(_context.Suppliers, "SupplierID", "Name");
+            SaleVM.Customers = new SelectList(_context.Customers, "CustomerID", "Name");
         }
     }
 }
